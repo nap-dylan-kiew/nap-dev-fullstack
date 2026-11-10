@@ -1,6 +1,6 @@
 # nap-dev-fullstack
 
-A Docker Compose based development environment for building a web front end (HTML + CSS + JavaScript) and a Node.js backend API, backed by Microsoft SQL Server.
+A Docker Compose based development environment for building a web front end (HTML + CSS + JavaScript) and a Node.js backend API, backed by Microsoft SQL Server Express.
 
 Three containers form the stack, started in a fixed order:
 
@@ -16,7 +16,7 @@ ict-db (SQL Server) -> ict-api (Node.js) -> ict-web (Debian)
 - [Services](#services)
   - [`ict-web` — web front end](#ict-web--web-front-end)
   - [`ict-api` — Node.js backend](#ict-api--nodejs-backend)
-  - [`ict-db` — Microsoft SQL Server 2022](#ict-db--microsoft-sql-server-2022)
+  - [`ict-db` — Microsoft SQL Server Express 2025](#ict-db--microsoft-sql-server-2025)
 - [Project structure](#project-structure)
 - [Start order](#start-order)
 - [Usage](#usage)
@@ -57,11 +57,11 @@ The trade-off is that nothing is served until you add it: no default app, no def
 
 ## Services
 
-| Service | Container | Image | Host port | Purpose |
-|---|---|---|---|---|
-| `ict-web` | `ict-web` | `debian:trixie` | `5500` | Static web front end / tooling shell |
-| `ict-api` | `ict-api` | `node:26-trixie` | `3080` | Node.js backend runtime |
-| `ict-db` | `ict-db` | `mcr.microsoft.com/mssql/server:2022-latest` | `1433` | Microsoft SQL Server 2022 Developer |
+| Service   | Container | Image                                        | Host port | Purpose                              |
+| --------- | --------- | -------------------------------------------- | --------- | ------------------------------------ |
+| `ict-web` | `ict-web` | `debian:trixie`                              | `5500`    | Static web front end / tooling shell |
+| `ict-api` | `ict-api` | `node:26-trixie`                             | `3080`    | Node.js backend runtime              |
+| `ict-db`  | `ict-db`  | `mcr.microsoft.com/mssql/server:2025-latest` | `1433`    | Microsoft SQL Server 2025 Express    |
 
 All three use `restart: unless-stopped`, and all expose their container port on the same host port.
 
@@ -99,26 +99,32 @@ node -e "const fs=require('fs');fs.accessSync('/workspace',fs.constants.W_OK);pr
 This is a liveness probe, not a port probe. Once the API app actually listens on `3080`, replace it with a readiness probe:
 
 ```yaml
-test: ["CMD", "node", "-e", "require('net').connect(3080,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+test:
+  [
+    "CMD",
+    "node",
+    "-e",
+    "require('net').connect(3080,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))",
+  ]
 ```
 
 Be aware that `ict-web` waits for `ict-api` to be healthy — with a port probe in place, a fresh `docker compose up` will stop at the API stage until something is actually listening on `3080`.
 
 [Back to Table of Contents](#table-of-contents)
 
-<a id="ict-db--microsoft-sql-server-2022" name="ict-db--microsoft-sql-server-2022"></a>
+<a id="ict-db--microsoft-sql-server-2025" name="ict-db--microsoft-sql-server-2025"></a>
 
-### `ict-db` — Microsoft SQL Server 2022
+### `ict-db` — Microsoft SQL Server 2025
 
 Runs the official SQL Server image, which Microsoft publishes on the Microsoft Container Registry (`mcr.microsoft.com`), not Docker Hub.
 
-| Setting | Value |
-|---|---|
-| Edition | `MSSQL_PID: Developer` (free, full-featured, non-production) |
-| Port | `1433` inside the container, published as `1433` on the host |
-| SA password | `MSSQL_SA_PASSWORD` (change the default before real use) |
-| EULA | `ACCEPT_EULA: "Y"` is required for the container to start |
-| Data directory | `/var/opt/mssql`, bind-mounted from `workspace/db` |
+| Setting        | Value                                                        |
+| -------------- | ------------------------------------------------------------ |
+| Edition        | `MSSQL_PID: Express` (free, full-featured, non-production)   |
+| Port           | `1433` inside the container, published as `1433` on the host |
+| SA password    | `MSSQL_SA_PASSWORD` (change the default before real use)     |
+| EULA           | `ACCEPT_EULA: "Y"` is required for the container to start    |
+| Data directory | `/var/opt/mssql`, bind-mounted from `workspace/db`           |
 
 > **Change the password.** `Your_Strong_Password123` is a placeholder, not a usable credential. Before you develop against this database, edit `MSSQL_SA_PASSWORD` in `docker-compose.yml` to a password of your choosing. SQL Server enforces a complexity policy — at least 8 characters, mixing upper case, lower case, digits, and symbols. A password that fails the policy does not degrade gracefully: setup aborts with `Unable to set system administrator password: Password validation failed`, the container exits with code 255, and `restart: unless-stopped` keeps cycling it.
 
@@ -131,7 +137,7 @@ mkdir -p workspace/db && sudo chown 10001:10001 workspace/db
 docker compose up -d
 ```
 
-If you want to change the password on the *existing* database instead of resetting it, do it in SQL:
+If you want to change the password on the _existing_ database instead of resetting it, do it in SQL:
 
 ```bash
 docker compose exec ict-db /opt/mssql-tools18/bin/sqlcmd \
@@ -144,7 +150,11 @@ Either way, update `MSSQL_SA_PASSWORD` in `docker-compose.yml` to match — the 
 Health check runs `sqlcmd` against `localhost` and only passes once the server answers queries:
 
 ```yaml
-test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' -b -o /dev/null"]
+test:
+  [
+    "CMD-SHELL",
+    '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q ''SELECT 1'' -b -o /dev/null',
+  ]
 ```
 
 `start_period` is 40 seconds because SQL Server needs time to initialise (or upgrade) its system databases — expect the first start to sit in `Waiting` for a while.
@@ -281,7 +291,7 @@ mkdir -p workspace/db && sudo chown 10001:10001 workspace/db
 
 ## Working inside a Container
 
-The `ict-web` and `ict-api` containers are Linux environments you write code in, not just processes. You can drive them entirely from VS Code, so the editor, terminal, and file tree all operate *inside* the container while the files stay on your host through the bind mount.
+The `ict-web` and `ict-api` containers are Linux environments you write code in, not just processes. You can drive them entirely from VS Code, so the editor, terminal, and file tree all operate _inside_ the container while the files stay on your host through the bind mount.
 
 [Back to Table of Contents](#table-of-contents)
 
@@ -317,10 +327,10 @@ A new window opens connected to that container. The bottom-left corner shows the
 
 On first attach, VS Code installs its server component into the container's `$HOME`:
 
-| Service | Container `$HOME` | Where the VS Code server lives | Survives `docker compose down`? |
-|---|---|---|---|
-| `ict-api` | `/home/node` | inside the container's writable layer | No — it is inside the container layer |
-| `ict-web` | `/workspace` (host `workspace/web`) | `workspace/web/.vscode-server` | Yes — it is on the bind mount |
+| Service   | Container `$HOME`                   | Where the VS Code server lives        | Survives `docker compose down`?       |
+| --------- | ----------------------------------- | ------------------------------------- | ------------------------------------- |
+| `ict-api` | `/home/node`                        | inside the container's writable layer | No — it is inside the container layer |
+| `ict-web` | `/workspace` (host `workspace/web`) | `workspace/web/.vscode-server`        | Yes — it is on the bind mount         |
 
 Both containers run as **uid 1000**, so the server install succeeds without `sudo`. Neither requires elevated privileges, and you should not attach as root.
 
@@ -364,11 +374,11 @@ After closing:
 
 ## Ports summary
 
-| Host | Container | Service |
-|---|---|---|
-| `5500` | `5500` | `ict-web` — front end |
-| `3080` | `3080` | `ict-api` — HTTP API |
-| `1433` | `1433` | `ict-db` — TDS / SQL Server |
+| Host   | Container | Service                     |
+| ------ | --------- | --------------------------- |
+| `5500` | `5500`    | `ict-web` — front end       |
+| `3080` | `3080`    | `ict-api` — HTTP API        |
+| `1433` | `1433`    | `ict-db` — TDS / SQL Server |
 
 All three bind to `0.0.0.0`, so they are reachable from other machines on your network. Change to `127.0.0.1:5500:5500` style mappings if you want them local to the host only.
 
@@ -386,4 +396,3 @@ All three bind to `0.0.0.0`, so they are reachable from other machines on your n
 - No npm dependencies are installed anywhere by design — bring your own `package.json` and install what your project needs.
 
 [Back to Table of Contents](#table-of-contents)
-
