@@ -1,0 +1,72 @@
+services:
+  ict-web:
+    image: debian:trixie
+    container_name: ict-web
+    # Runs as non-root, mapped to the host login user (uid/gid 1000)
+    user: "1000:1000"
+    environment:
+      # Debian has no passwd entry for uid 1000, so HOME defaults to "/"; use the mounted workspace instead
+      HOME: /workspace
+    working_dir: /workspace
+    command: sleep infinity
+    ports:
+      - "5500:5500"
+    volumes:
+      - ./workspace/web:/workspace
+    depends_on:
+      ict-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ict-api:
+    image: node:26-trixie
+    container_name: ict-api
+    # Runs as non-root, mapped to the host login user (uid/gid 1000)
+    user: "1000:1000"
+    working_dir: /workspace
+    command: sleep infinity
+    ports:
+      - "3080:3080"
+    volumes:
+      - ./workspace/api:/workspace
+    depends_on:
+      ict-db:
+        condition: service_healthy
+    # Liveness check: runtime is up and the workspace mount is usable.
+    # Once the API app exists here, switch this to a TCP check on port 3080.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const fs=require('fs');fs.accessSync('/workspace',fs.constants.W_OK);process.exit(0)",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  ict-db:
+    image: mcr.microsoft.com/mssql/server:2025-latest
+    container_name: ict-db
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Your_Strong_Password123"
+      MSSQL_PID: "Express"
+    volumes:
+      - ./workspace/db:/var/opt/mssql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q ''SELECT 1'' -b -o /dev/null',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    restart: unless-stopped
