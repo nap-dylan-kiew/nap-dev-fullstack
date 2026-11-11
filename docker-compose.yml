@@ -58,7 +58,7 @@ services:
       MSSQL_SA_PASSWORD: "Your_Strong_Password123"
       MSSQL_PID: "Express"
     volumes:
-      - ./workspace/db:/var/opt/mssql
+      - mssql-data:/var/opt/mssql
     healthcheck:
       test:
         [
@@ -70,3 +70,5 @@ services:
       retries: 10
       start_period: 40s
     restart: unless-stopped
+volumes:
+  mssql-data:
