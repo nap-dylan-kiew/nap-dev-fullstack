@@ -1,0 +1,126 @@
+### Session 6 lab: the Counter Desk prototype (reference solution).
+### Seed data: Members 1 to 7. Only two copies start available (Status 'D'):
+###   0099826704 copy 1 (The Firm) and 0099895102 copy 1 (Jurassic Park).
+### MemberID 99 does not exist, which makes it a safe "unknown member" case.
+### Check the Loan and BookCopy tables in SSMS after each step.
+
+### ---- Checkpoint 1: read ----
+GET http://localhost:3000/books
+###
+GET http://localhost:3000/books/0099826704
+###
+GET http://localhost:3000/books/0000000000
+
+### ---- Checkpoint 2: add a book with its first copy (one transaction) ----
+
+### 201: a Book row AND BookCopy number 1 (Status D)
+POST http://localhost:3000/books
+Content-Type: application/json
+
+{
+  "isbn": "0000000010",
+  "title": "Counter Desk Handbook",
+  "yearPublish": "2026",
+  "publisherId": 1,
+  "bookCat": "NF",
+  "authorId": 1,
+  "rentalRate": 5.00
+}
+
+### 409: that ISBN is taken
+POST http://localhost:3000/books
+Content-Type: application/json
+
+{ "isbn": "0000000010", "title": "Counter Desk Handbook", "yearPublish": "2026", "rentalRate": 5.00 }
+
+### 400: rental rate under 2.50
+POST http://localhost:3000/books
+Content-Type: application/json
+
+{ "isbn": "0000000011", "title": "Too Cheap", "yearPublish": "2026", "rentalRate": 1.00 }
+
+### 400: publisher 99 does not exist. Nothing is left behind in Book or BookCopy.
+POST http://localhost:3000/books
+Content-Type: application/json
+
+{ "isbn": "0000000012", "title": "Half Written", "yearPublish": "2026", "publisherId": 99, "rentalRate": 5.00 }
+
+### ---- Checkpoint 3: search and add a copy ----
+GET http://localhost:3000/books?title=sql
+###
+GET http://localhost:3000/books?bookCat=F&limit=3&page=2&sort=year&order=desc
+###
+POST http://localhost:3000/books/0000000010/copies
+Content-Type: application/json
+
+{ "copyNo": 2, "rentalRate": 5.50 }
+
+### 409: copy 2 now exists
+POST http://localhost:3000/books/0000000010/copies
+Content-Type: application/json
+
+{ "copyNo": 2, "rentalRate": 5.50 }
+
+### 404: no such book
+POST http://localhost:3000/books/0000000099/copies
+Content-Type: application/json
+
+{ "copyNo": 1, "rentalRate": 5.50 }
+
+### ---- Checkpoint 4: rent and return ----
+
+### 201: a Loan row appears (LoanNo comes back from the database), copy becomes M
+POST http://localhost:3000/copies/rent
+Content-Type: application/json
+
+{ "isbn": "0099826704", "copyNo": 1, "memberId": 1 }
+
+### 409: already rented
+POST http://localhost:3000/copies/rent
+Content-Type: application/json
+
+{ "isbn": "0099826704", "copyNo": 1, "memberId": 2 }
+
+### 404: no such member
+POST http://localhost:3000/copies/rent
+Content-Type: application/json
+
+{ "isbn": "0099895102", "copyNo": 1, "memberId": 99 }
+
+### 404: no such copy
+POST http://localhost:3000/copies/rent
+Content-Type: application/json
+
+{ "isbn": "0099826704", "copyNo": 9, "memberId": 1 }
+
+### 200: Loan.DateReturn is filled in, copy goes back to D
+POST http://localhost:3000/copies/return
+Content-Type: application/json
+
+{ "isbn": "0099826704", "copyNo": 1 }
+
+### 404: there is no open loan any more
+POST http://localhost:3000/copies/return
+Content-Type: application/json
+
+{ "isbn": "0099826704", "copyNo": 1 }
+
+### ---- Stretch ----
+
+### Change a copy's rental rate (200)
+PATCH http://localhost:3000/books/0000000010/copies/2
+Content-Type: application/json
+
+{ "rentalRate": 6.00 }
+
+### How many copies are on the shelf? (200)
+GET http://localhost:3000/books/0000000010/availability
+
+### Delete a copy (204)
+DELETE http://localhost:3000/books/0000000010/copies/2
+
+### Bad JSON is caught by the error handler, not a stack trace (400)
+POST http://localhost:3000/copies/return
+Content-Type: application/json
+
+{ "isbn": "0099826704",

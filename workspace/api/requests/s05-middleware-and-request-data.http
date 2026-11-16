@@ -1,0 +1,74 @@
+### Session 5 IPL: middleware, the query string, params and body together.
+### The server prints one line per request (the logger middleware). Watch the terminal.
+
+### ---- Middleware: POST /members ----
+
+### Register a member with JSON (201)
+POST http://localhost:3000/members
+Content-Type: application/json
+
+{ "name": "Aisha Rahman", "emailAddr": "aisha@example.com", "branchNo": 1 }
+
+### The same member as a form (201). Use this in Postman as x-www-form-urlencoded,
+### NOT form-data (form-data is multipart, and req.body stays empty).
+POST http://localhost:3000/members
+Content-Type: application/x-www-form-urlencoded
+
+name=Aisha Rahman&emailAddr=aisha@example.com&branchNo=1
+
+### Not an email: validate() answers 400 before the controller runs
+POST http://localhost:3000/members
+Content-Type: application/json
+
+{ "name": "Aisha Rahman", "emailAddr": "not-an-email" }
+
+### A branch that does not exist: the foreign key refuses it (400)
+POST http://localhost:3000/members
+Content-Type: application/json
+
+{ "name": "Aisha Rahman", "emailAddr": "aisha@example.com", "branchNo": 99 }
+
+### ---- Searching with the query string: GET /books ----
+### Every key is optional. Leave one out and it does not filter.
+
+### No query string: the first 10 books, sorted by title (200)
+GET http://localhost:3000/books
+
+### Title contains "all", fiction only
+GET http://localhost:3000/books?title=the&bookCat=F
+
+### Page 2 of 3 per page, newest first
+GET http://localhost:3000/books?limit=3&page=2&sort=year&order=desc
+
+### limit is capped at 50 (400)
+GET http://localhost:3000/books?limit=500
+
+### Sort is a whitelist, so this cannot reach the SQL (400)
+GET http://localhost:3000/books?sort=Title;DROP TABLE Book
+
+### ---- Params and body together: POST /books/:isbn/copies ----
+### The ISBN is in the URL. The copy number and rate are in the body.
+
+### Add copy 4 of Charlotte's Web (201)
+POST http://localhost:3000/books/0064410935/copies
+Content-Type: application/json
+
+{ "copyNo": 4, "rentalRate": 7.50 }
+
+### The same copy again: that copy number is taken (409)
+POST http://localhost:3000/books/0064410935/copies
+Content-Type: application/json
+
+{ "copyNo": 4, "rentalRate": 7.50 }
+
+### A book that does not exist (404)
+POST http://localhost:3000/books/0000000000/copies
+Content-Type: application/json
+
+{ "copyNo": 1, "rentalRate": 7.50 }
+
+### Rate below the 2.50 minimum (400)
+POST http://localhost:3000/books/0064410935/copies
+Content-Type: application/json
+
+{ "copyNo": 5, "rentalRate": 1.00 }

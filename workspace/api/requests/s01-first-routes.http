@@ -1,0 +1,8 @@
+### Session 1 OAL: the two first routes.
+### Use the VS Code "REST Client" extension, or copy the URLs into Postman or a browser.
+
+GET http://localhost:3000/
+
+###
+
+GET http://localhost:3000/categories

@@ -1,0 +1,17 @@
+{
+  "name": "bookcat-api",
+  "version": "1.0.0",
+  "description": "BED OCT26 reference project: a Node.js and Express backend app, built up session by session.",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "joi": "^17.13.9",
+    "mssql": "^11.0.2"
+  }
+}

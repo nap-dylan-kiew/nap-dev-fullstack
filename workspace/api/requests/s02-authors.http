@@ -1,0 +1,29 @@
+### Session 2 IPL: the Author routes.
+### Use the VS Code "REST Client" extension, or copy these into Postman.
+
+### All authors (200)
+GET http://localhost:3000/authors
+
+### One author (200)
+GET http://localhost:3000/authors/3
+
+### An id that matches nothing (404)
+GET http://localhost:3000/authors/999
+
+### An id that is not a number (400)
+GET http://localhost:3000/authors/abc
+
+### Add an author (201). The client supplies the id, because no primary key is IDENTITY.
+POST http://localhost:3000/authors
+Content-Type: application/json
+
+{ "id": 900, "name": "Edgar Allan Poe" }
+
+### Change an author's name (200, or 404 if the id does not exist)
+PUT http://localhost:3000/authors/900
+Content-Type: application/json
+
+{ "name": "E. A. Poe" }
+
+### Remove an author (204, no body, or 404 if the id does not exist)
+DELETE http://localhost:3000/authors/900

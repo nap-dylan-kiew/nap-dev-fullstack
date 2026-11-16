@@ -1,0 +1,37 @@
+### Session 4 IPL: orchestrating Book and BookCopy.
+### In the seed data only two copies have Status 'D' (available):
+###   0099826704 copy 1 (The Firm) and 0099895102 copy 1 (Jurassic Park).
+### Every other seeded copy has a NULL Status, so it is NOT available.
+
+### Rent an available copy (200). The Controller checks first, then writes.
+POST http://localhost:3000/copies/rent
+Content-Type: application/json
+
+{ "isbn": "0099826704", "copyNo": 1 }
+
+### Rent the same copy again: the check fails, nothing is written (409)
+POST http://localhost:3000/copies/rent
+Content-Type: application/json
+
+{ "isbn": "0099826704", "copyNo": 1 }
+
+### A copy that does not exist: valid on its own, not a real row (404)
+POST http://localhost:3000/copies/rent
+Content-Type: application/json
+
+{ "isbn": "0099826704", "copyNo": 9 }
+
+### Bad copyNo: one Joi schema checks both fields together (400)
+POST http://localhost:3000/copies/rent
+Content-Type: application/json
+
+{ "isbn": "0099826704", "copyNo": 0 }
+
+### Short isbn (400)
+POST http://localhost:3000/copies/rent
+Content-Type: application/json
+
+{ "isbn": "123", "copyNo": 1 }
+
+### Delete a copy, now wrapped in try / catch (204, then 404 the second time)
+DELETE http://localhost:3000/books/0064410935/copies/9

@@ -1,0 +1,85 @@
+### Session 3 IPL: Book, BookCopy and BookAuthor routes.
+### Seed data: ISBN 0064410935 is Charlotte's Web (author 1). Authors are 1 to 6.
+### Book categories are C (Children), F (Fiction), NF (Non-Fiction).
+
+### One book (200)
+GET http://localhost:3000/books/0064410935
+
+### An ISBN that matches nothing (404)
+GET http://localhost:3000/books/0000000000
+
+### Add a book and its author in one transaction (201)
+POST http://localhost:3000/books
+Content-Type: application/json
+
+{
+  "isbn": "0000000001",
+  "title": "Practice Makes Perfect",
+  "yearPublish": "2026",
+  "publisherId": 1,
+  "bookCat": "NF",
+  "authorId": 1
+}
+
+### Same request with an authorId that does not exist. The transaction rolls back,
+### so the Book row is NOT left behind (500 in Session 3). Check Book in SSMS.
+POST http://localhost:3000/books
+Content-Type: application/json
+
+{
+  "isbn": "0000000002",
+  "title": "Half Written",
+  "yearPublish": "2026",
+  "publisherId": 1,
+  "bookCat": "NF",
+  "authorId": 999
+}
+
+### Update a book (200)
+PUT http://localhost:3000/books/0000000001
+Content-Type: application/json
+
+{
+  "title": "Practice Makes Perfect, Second Edition",
+  "yearPublish": "2026",
+  "publisherId": 2,
+  "bookCat": "NF"
+}
+
+### The JOIN: every book one author wrote (200). Author 3 is John Grisham.
+GET http://localhost:3000/authors/3/books
+
+### An author with no books yet is an empty list, not a 404 (200)
+GET http://localhost:3000/authors/2/books
+
+### One copy, found by ISBN and CopyNo together (200)
+GET http://localhost:3000/books/0064410935/copies/2
+
+### A copy that does not exist (404)
+GET http://localhost:3000/books/0064410935/copies/9
+
+### Delete one copy (204). Try it on a copy of the book you added in this session.
+DELETE http://localhost:3000/books/0064410935/copies/9
+
+### ---- Session 3 OAL: the MVC split ----
+
+### Update a rental rate through the Controller and Model (200)
+PUT http://localhost:3000/books/0064410935/copies/2
+Content-Type: application/json
+
+{ "rentalRate": 9.00 }
+
+### Below 2.50: Joi refuses it in the Controller (400). The Model never runs.
+PUT http://localhost:3000/books/0064410935/copies/2
+Content-Type: application/json
+
+{ "rentalRate": 1.00 }
+
+### Missing rentalRate: also 400
+PUT http://localhost:3000/books/0064410935/copies/2
+Content-Type: application/json
+
+{}
+
+### A book's authors, with the JOIN in the Model (200)
+GET http://localhost:3000/books/0064410935/authors
