@@ -1,6 +1,11 @@
 services:
   ict-web:
-    image: debian:trixie
+    build:
+      context: ./docker
+      args:
+        # Shared shell layer (Powerline fonts + oh-my-bash); see docker/Dockerfile
+        BASE_IMAGE: debian:trixie
+    image: ict-web:local
     container_name: ict-web
     # Runs as non-root, mapped to the host login user (uid/gid 1000)
     user: "1000:1000"
@@ -19,7 +24,11 @@ services:
     restart: unless-stopped
 
   ict-api:
-    image: node:26-trixie
+    build:
+      context: ./docker
+      args:
+        BASE_IMAGE: node:26-trixie
+    image: ict-api:local
     container_name: ict-api
     # Runs as non-root, mapped to the host login user (uid/gid 1000)
     user: "1000:1000"
@@ -55,7 +64,7 @@ services:
       - "1433:1433"
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "msSQL.54321"
+      MSSQL_SA_PASSWORD: "msSQL.1234"
       MSSQL_PID: "Express"
     volumes:
       - mssql-data:/var/opt/mssql

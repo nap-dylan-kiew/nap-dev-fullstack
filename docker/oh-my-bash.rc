@@ -1,0 +1,17 @@
+# System-wide oh-my-bash configuration.
+# Sourced from /etc/bash.bashrc (interactive non-login shells) and
+# /etc/profile.d/oh-my-bash.sh (login shells).
+case $- in
+  *i*) ;;
+    *) return ;;
+esac
+
+export OSH=/opt/oh-my-bash
+OSH_THEME=agnoster
+DISABLE_AUTO_UPDATE=true
+
+completions=(git ssh)
+aliases=(general)
+plugins=(git)
+
+source "$OSH/oh-my-bash.sh"

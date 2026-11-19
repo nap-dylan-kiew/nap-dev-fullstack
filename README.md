@@ -8,6 +8,10 @@ Three containers form the stack, started in a fixed order:
 ict-db (SQL Server) -> ict-api (Node.js) -> ict-web (Debian)
 ```
 
+`ict-web` and `ict-api` are built locally from a shared [docker/Dockerfile](docker/Dockerfile); `ict-db` uses the upstream Microsoft image directly.
+
+> **Shared shell layer.** Both application images sit on top of their upstream bases with one common layer: `bash`, `git`, `curl`, `fontconfig`, the Powerline fonts, and oh-my-bash with the `powerline` theme, loaded system-wide from `/etc/bash.bashrc` and `/etc/profile.d`. It is deliberately *not* applied to the `ict-db` appliance. After editing [docker/Dockerfile](docker/Dockerfile) or [docker/oh-my-bash.rc](docker/oh-my-bash.rc), rebuild with `docker compose build`. Details under [Services](#services).
+
 ---
 
 ## Table of Contents
@@ -33,7 +37,7 @@ ict-db (SQL Server) -> ict-api (Node.js) -> ict-web (Debian)
 
 ## Deliberately bare by design
 
-This scaffold is intentionally built with the bare minimum: base images, `sleep infinity` as the keep-alive, no framework, no bundler, no `package.json`, and **no preinstalled npm dependencies**. That is the point — it is a starting point, not a finished application.
+This scaffold is intentionally minimal: the web and API images start from upstream base images plus one shared shell layer, `sleep infinity` as the keep-alive, no framework, no bundler, no `package.json`, and **no preinstalled npm dependencies**. That is the point — it is a starting point, not a finished application. The only additions are terminal-comfort tools baked into the two application images: Powerline fonts and [oh-my-bash](https://github.com/ohmybash/oh-my-bash) (see [Services](#services)).
 
 You (the developer) decide the stack. Add whatever npm packages your project needs inside `workspace/api`, for example:
 
@@ -59,11 +63,19 @@ The trade-off is that nothing is served until you add it: no default app, no def
 
 | Service   | Container | Image                                        | Host port | Purpose                              |
 | --------- | --------- | -------------------------------------------- | --------- | ------------------------------------ |
-| `ict-web` | `ict-web` | `debian:trixie`                              | `5500`    | Static web front end / tooling shell |
-| `ict-api` | `ict-api` | `node:26-trixie`                             | `3080`    | Node.js backend runtime              |
+| `ict-web` | `ict-web` | `ict-web:local` (built from `debian:trixie`) | `5500`    | Static web front end / tooling shell |
+| `ict-api` | `ict-api` | `ict-api:local` (built from `node:26-trixie`) | `3080`    | Node.js backend runtime              |
 | `ict-db`  | `ict-db`  | `mcr.microsoft.com/mssql/server:2025-latest` | `1433`    | Microsoft SQL Server 2025 Express    |
 
 All three use `restart: unless-stopped`, and all expose their container port on the same host port.
+
+The two application images are built by `docker compose build` from [docker/Dockerfile](docker/Dockerfile), with the upstream base image passed in as the `BASE_IMAGE` build argument. They add the same shell layer:
+
+- `bash`, `git`, `curl`, `ca-certificates`, `fontconfig`
+- Powerline fonts: `PowerlineSymbols` plus the patched `DejaVu Sans Mono for Powerline` faces, registered through fontconfig
+- oh-my-bash at `/opt/oh-my-bash`, configured by [docker/oh-my-bash.rc](docker/oh-my-bash.rc) with the `powerline` theme, and loaded for every user from `/etc/bash.bashrc` (interactive shells) and `/etc/profile.d/oh-my-bash.sh` (login shells)
+
+Because the configuration is system-wide rather than in a user's `$HOME`, it also works in `ict-web`, whose `$HOME` is the bind-mounted `/workspace`. Changing either build file requires a rebuild: `docker compose build`, then `docker compose up -d`.
 
 [Back to Table of Contents](#table-of-contents)
 
@@ -71,7 +83,7 @@ All three use `restart: unless-stopped`, and all expose their container port on 
 
 ### `ict-web` — web front end
 
-Uses the official Debian Trixie image with **nothing preinstalled** — no `python3`, no `node`, no `curl`. It is the shell for serving and developing the HTML/CSS/JavaScript front end. Because it is non-root, packages must be added at image build time (a `Dockerfile` with `apt-get install`) rather than on the fly; as a result, the front end is usually served by the Node runtime in `ict-api` during development, with `ict-web` used for shells and inspection.
+Built from the official Debian Trixie image plus the shared shell layer described above (`bash`, `git`, `curl`, `fontconfig`, Powerline fonts, oh-my-bash — but still no `node` and no `python3`). It is the shell for serving and developing the HTML/CSS/JavaScript front end. Because it runs as non-root, any additional packages must be added at image build time in [docker/Dockerfile](docker/Dockerfile) rather than on the fly; during development the front end is usually served by the Node runtime in `ict-api`, with `ict-web` used for shells and inspection.
 
 - Working directory: `/workspace`, bind-mounted from `workspace/web`
 - Runs as **non-root**, mapped to the host login user (`user: "1000:1000"`)
@@ -84,7 +96,7 @@ Uses the official Debian Trixie image with **nothing preinstalled** — no `pyth
 
 ### `ict-api` — Node.js backend
 
-Uses the official Node.js 26.x image on Debian Trixie. It is the runtime for the backend API, which should listen on port `3080` inside the container. Only Node and npm ship in the image — no project files, no dependencies, no opinion about your framework. Create `package.json` in `workspace/api` and install whatever you need.
+Built from the official Node.js 26.x image on Debian Trixie plus the same shared shell layer. It is the runtime for the backend API, which should listen on port `3080` inside the container. Node, npm and the shell tooling ship in the image — but no project files, no dependencies, no opinion about your framework. Create `package.json` in `workspace/api` and install whatever you need.
 
 - Working directory: `/workspace`, bind-mounted from `workspace/api`
 - Runs as **non-root**, mapped to the host login user (the image already has a `node` user at uid/gid 1000, so `HOME` resolves to `/home/node`)
@@ -124,18 +136,20 @@ Runs the official SQL Server image, which Microsoft publishes on the Microsoft C
 | Port           | `1433` inside the container, published as `1433` on the host |
 | SA password    | `MSSQL_SA_PASSWORD` (change the default before real use)     |
 | EULA           | `ACCEPT_EULA: "Y"` is required for the container to start    |
-| Data directory | `/var/opt/mssql`, bind-mounted from `workspace/db`           |
+| Data directory | `/var/opt/mssql`, stored in the named volume `mssql-data`    |
+
+The volume is declared at the bottom of `docker-compose.yml` and is created and owned by Docker, not on the host filesystem. Compose prefixes it with the project name, so on disk it is `nap-dev-fullstack_mssql-data` (`docker volume ls`).
 
 > **Change the password.** `Your_Strong_Password123` is a placeholder, not a usable credential. Before you develop against this database, edit `MSSQL_SA_PASSWORD` in `docker-compose.yml` to a password of your choosing. SQL Server enforces a complexity policy — at least 8 characters, mixing upper case, lower case, digits, and symbols. A password that fails the policy does not degrade gracefully: setup aborts with `Unable to set system administrator password: Password validation failed`, the container exits with code 255, and `restart: unless-stopped` keeps cycling it.
 
-Because the password is only read when the database is **first initialised**, changing it later has no effect on an existing `workspace/db`. To apply your new password you must stop the stack and wipe the data directory:
+Because the password is only read when the database is **first initialised**, changing it later has no effect on the existing data in the `mssql-data` volume. To apply your new password you must stop the stack and delete that volume, which discards all databases:
 
 ```bash
-docker compose down
-sudo rm -rf workspace/db/*
-mkdir -p workspace/db && sudo chown 10001:10001 workspace/db
+docker compose down -v     # -v also removes named volumes, i.e. the database files
 docker compose up -d
 ```
+
+Omit `-v` if you only want to stop the stack and keep the existing data.
 
 If you want to change the password on the _existing_ database instead of resetting it, do it in SQL:
 
@@ -159,19 +173,7 @@ test:
 
 `start_period` is 40 seconds because SQL Server needs time to initialise (or upgrade) its system databases — expect the first start to sit in `Waiting` for a while.
 
-**Permissions:** the image runs as uid `10001` (user `mssql`), so the bind-mounted host directory must be writable by that user. If `workspace/db` is owned by your own account, SQL Server fails at startup with:
-
-```
-The system directory [/.system] could not be created ... Access Denied
-```
-
-and restart-loops. Fix it once with either:
-
-```bash
-sudo chown 10001:10001 workspace/db     # preferred
-# or
-chmod 777 workspace/db
-```
+**Permissions:** SQL Server runs as uid `10001` (user `mssql`) inside the container, but the data lives in the Docker-managed `mssql-data` volume, so the daemon sets up ownership itself — there is no host directory to `chown` or `chmod`, and none of the classic `Access Denied` bind-mount failures apply. Use `docker compose down -v` if you want to throw the volume away and let Docker create a clean one.
 
 Connecting from the host (requires `sqlcmd` / `mssql-tools18` installed on the host):
 
@@ -203,18 +205,18 @@ sqlcmd -S ict-db -U sa -P 'Your_Strong_Password123' -C
 ```
 nap-dev-fullstack/
 ├── docker-compose.yml       # the three-service stack, health checks and start order
+├── docker/                  # build context shared by ict-web and ict-api
+│   ├── Dockerfile           # BASE_IMAGE arg, Powerline fonts, oh-my-bash
+│   └── oh-my-bash.rc        # system-wide shell configuration
 ├── README.md
 └── workspace/               # bind-mounted into the containers
     ├── web/                 # ict-web  -> /workspace  (HTML + CSS + JavaScript)
-    ├── api/                 # ict-api  -> /workspace  (Node.js backend)
-    └── db/                  # ict-db   -> /var/opt/mssql (SQL Server data + logs)
-        ├── data/            # system and user database files (.mdf/.ldf)
-        ├── log/             # SQL Server error log
-        ├── secrets/         # generated machine key material
-        └── .system/         # internal system directory
+    └── api/                 # ict-api  -> /workspace  (Node.js backend)
 ```
 
-`workspace/` is host-owned working data. Edit files there from the host and they are visible in the containers immediately — no rebuild or image copy needed. `workspace/db` is runtime state created by SQL Server, not source code; back it up or delete it to reset the database.
+SQL Server data is **not** under `workspace/`. It lives in the named volume `mssql-data` (created by Docker as `nap-dev-fullstack_mssql-data`), mounted at `/var/opt/mssql` inside `ict-db`, containing the system and user database files, logs, secrets and the internal `.system` directory.
+
+`workspace/` is host-owned working data. Edit files there from the host and they are visible in the containers immediately — no rebuild or image copy needed. The database volume is runtime state, not source code; back it up or delete it to reset the database — see [Usage](#usage).
 
 The bind mount is the reason both application services run as your host uid/gid: files written inside the container come out owned by you, so nothing ends up `root`-owned and undeletable on the host.
 
@@ -248,6 +250,13 @@ Start everything:
 docker compose up -d
 ```
 
+`up` builds `ict-web:local` and `ict-api:local` on first run or when the images are missing. It does **not** rebuild them after you edit `docker/Dockerfile` or `docker/oh-my-bash.rc`, so do that explicitly:
+
+```bash
+docker compose build
+docker compose up -d
+```
+
 Check status and health:
 
 ```bash
@@ -278,9 +287,8 @@ docker compose down
 Reset the database completely:
 
 ```bash
-docker compose down
-sudo rm -rf workspace/db/*
-mkdir -p workspace/db && sudo chown 10001:10001 workspace/db
+docker compose down -v     # -v removes the mssql-data volume along with the containers
+docker compose up -d
 ```
 
 [Back to Table of Contents](#table-of-contents)
@@ -340,7 +348,7 @@ Practical details specific to this scaffold:
 - **Extensions are per-container.** Those installed "on the container" are persisted in the same `$HOME` location as the server, so they are lost for `ict-api` when the container is recreated but kept for `ict-web`.
 - **Prefer the API container for Node tooling.** `ict-web` has no Node, so in that window the integrated terminal works but there is no JS runtime, no `npm`, and no debugger for Node.
 - **Do not attach to `ict-db`.** The SQL Server image is a single-purpose appliance: the shell runs as uid `10001`, and its `$HOME` (`/home/mssql`) is not writable, so VS Code cannot install its server. Use `sqlcmd` through `docker compose exec` instead, as shown in the `ict-db` section.
-- **Prefer rebuilding over reinstalling.** Because this scaffold has no `Dockerfile`, the server and any container-installed tooling are ephemeral for `ict-api`. If you need a repeatable toolchain, add a `Dockerfile` (installing OS packages and, if you like, the Dev Containers features) rather than installing by hand each time.
+- **Prefer rebuilding over reinstalling.** Packages you install by hand and the VS Code server itself live in the container's writable layer, so they are lost when `ict-api` is recreated. Put repeatable tooling in `docker/Dockerfile` and run `docker compose build` instead of installing it again each time.
 
 [Back to Table of Contents](#table-of-contents)
 
@@ -392,7 +400,8 @@ All three bind to `0.0.0.0`, so they are reachable from other machines on your n
 
 - Set a real `MSSQL_SA_PASSWORD` before using this beyond local development; the default is a placeholder.
 - The API container does not know the database credentials yet — pass them as environment variables (e.g. `MSSQL_HOST=ict-db`, `MSSQL_USER=sa`, `MSSQL_PASSWORD=...`) when you build the backend.
-- `ict-web` and `ict-api` run `sleep infinity` so the containers stay up with only base images; nothing is listening until you put an app in `workspace/web` and `workspace/api`.
+- `ict-web` and `ict-api` run `sleep infinity` so the containers stay up even before an app exists; nothing is listening until you put an app in `workspace/web` and `workspace/api`.
+- The Powerline fonts baked into the images let tools inside the containers render the glyphs, but your terminal emulator draws from **host** fonts — install a Powerline-patched font on the host as well or the prompt will show boxes/blank cells.
 - No npm dependencies are installed anywhere by design — bring your own `package.json` and install what your project needs.
 
 [Back to Table of Contents](#table-of-contents)
