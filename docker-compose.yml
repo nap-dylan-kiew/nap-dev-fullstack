@@ -68,6 +68,7 @@ services:
       MSSQL_PID: "Express"
     volumes:
       - mssql-data:/var/opt/mssql
+      - mssql-backup:/var/opt/mssql/backup
     healthcheck:
       test:
         [
@@ -81,3 +82,4 @@ services:
     restart: unless-stopped
 volumes:
   mssql-data:
+  mssql-backup:
